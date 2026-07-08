@@ -1,0 +1,14 @@
+image,score,confidence,delta_e,L,a,b
+real_egg_1.jpg,9,0.71,8.44,67.1,21.0,45.0
+real_egg_3.jpg,11,0.72,9.08,60.0,24.0,39.0
+real_egg_yolk_1.jpg,9,0.72,6.48,60.0,23.0,65.0
+real_egg_yolk_2.jpg,9,0.31,16.59,58.8,7.0,31.0
+real_egg_yolk_3.jpg,11,0.86,5.06,60.8,56.0,70.0
+synthetic_yolk_score_1.jpg,2,0.99,1.56,87.5,0.0,41.0
+synthetic_yolk_score_11.jpg,13,0.88,3.79,49.8,50.0,60.0
+synthetic_yolk_score_13.jpg,15,0.72,6.14,40.0,53.0,51.0
+synthetic_yolk_score_15.jpg,15,0.77,9.7,32.2,50.0,40.0
+synthetic_yolk_score_3.jpg,4,0.99,0.91,82.0,5.0,67.0
+synthetic_yolk_score_5.jpg,6,0.95,1.85,76.9,13.0,79.0
+synthetic_yolk_score_7.jpg,8,0.99,2.34,70.6,28.0,75.0
+synthetic_yolk_score_9.jpg,11,0.98,2.15,60.4,41.0,68.0

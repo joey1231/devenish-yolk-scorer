@@ -151,10 +151,20 @@ def white_balance_plate(image):
     plate_pixels = image[plate_sample_mask > 0]
     plate_mean = plate_pixels.mean(axis=0)  # BGR
 
+    # Validate: only correct if the detected surface is actually white-ish.
+    # A white plate should have high brightness (>150) and low color spread
+    # (channels within ~30 of each other). If not, skip correction -- the
+    # "plate" is probably a colored surface, grey counter, or wooden board.
+    min_channel = plate_mean.min()
+    max_channel = plate_mean.max()
+    channel_spread = max_channel - min_channel
+    if min_channel < 150 or channel_spread > 40:
+        return image  # fallback: detected surface isn't white
+
     # Scale so plate reads as (255, 255, 255) -- but cap to avoid overflow
     target_white = 240.0  # slightly below 255 to avoid clipping
     scale = target_white / (plate_mean + 1e-6)
-    scale = np.clip(scale, 0.5, 2.0)  # safety clamp
+    scale = np.clip(scale, 0.8, 1.5)  # tighter safety clamp
 
     corrected = image.astype(np.float32) * scale[np.newaxis, np.newaxis, :]
     corrected = np.clip(corrected, 0, 255).astype(np.uint8)
@@ -166,42 +176,84 @@ def white_balance_plate(image):
 # Yolk segmentation
 # ---------------------------------------------------------------------------
 
+def _circularity(contour):
+    """Compute circularity of a contour. 1.0 = perfect circle."""
+    area = cv2.contourArea(contour)
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter == 0:
+        return 0
+    return 4 * np.pi * area / (perimeter ** 2)
+
+
 def segment_yolk(image, debug_dir=None):
     """
-    Segment the egg yolk from the image using HSV color thresholding.
-    Returns the yolk mask and the bounding circle of the yolk.
+    Segment the egg yolk from the image using HSV color thresholding
+    with circularity filtering to reject non-yolk objects (eggshells,
+    wooden surfaces, etc).
+    Returns the yolk mask and the bounding contour of the yolk.
     """
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     # Yolk color range in HSV: yellow to orange
-    # H: 10-35 (yellow-orange), S: 80-255 (saturated), V: 100-255 (bright)
-    lower_yolk = np.array([10, 80, 100])
-    upper_yolk = np.array([38, 255, 255])
+    # H: 15-35 (yellow-orange), S: 100+ (well-saturated), V: 120+ (bright)
+    # Tighter than before to reject brown objects (shells, wood, cinnamon)
+    lower_yolk = np.array([15, 100, 120])
+    upper_yolk = np.array([35, 255, 255])
     mask = cv2.inRange(hsv, lower_yolk, upper_yolk)
 
     # Extend to catch deeper orange yolks (scores 11-15)
-    lower_deep = np.array([0, 100, 100])
-    upper_deep = np.array([12, 255, 255])
+    # Higher saturation floor to reject brown/tan objects
+    lower_deep = np.array([3, 130, 120])
+    upper_deep = np.array([15, 255, 255])
     mask_deep = cv2.inRange(hsv, lower_deep, upper_deep)
     mask = cv2.bitwise_or(mask, mask_deep)
+
+    # Catch deep red-orange yolks (score 14-15) that wrap around H=0
+    lower_red = np.array([0, 150, 120])
+    upper_red = np.array([3, 255, 255])
+    mask_red = cv2.inRange(hsv, lower_red, upper_red)
+    mask = cv2.bitwise_or(mask, mask_red)
 
     # Morphological cleanup
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=3)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
-    # Find the largest blob (the yolk)
+    # Find contours and filter by circularity + area
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None, None
 
-    yolk_contour = max(contours, key=cv2.contourArea)
-    min_area = image.shape[0] * image.shape[1] * 0.005  # at least 0.5% of image
-    if cv2.contourArea(yolk_contour) < min_area:
-        return None, None
+    img_area = image.shape[0] * image.shape[1]
+    min_area = img_area * 0.002   # at least 0.2% of image
+    max_area = img_area * 0.5     # at most 50% of image
 
-    # Create clean yolk mask from the largest contour only
-    yolk_mask = np.zeros_like(mask)
+    # Score each contour: prefer circular, well-sized blobs
+    candidates = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < min_area or area > max_area:
+            continue
+        circ = _circularity(c)
+        # Yolks are roughly circular (circularity > 0.4)
+        # Rolling pins, eggshell edges, cinnamon sticks are elongated (< 0.3)
+        if circ < 0.3:
+            continue
+        # Score = area * circularity (prefer large, circular blobs)
+        candidates.append((c, area * circ, circ))
+
+    if not candidates:
+        # Fallback: take the largest contour if nothing passes the filter
+        yolk_contour = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(yolk_contour) < min_area:
+            return None, None
+    else:
+        # Pick the best candidate by score
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        yolk_contour = candidates[0][0]
+
+    # Create clean yolk mask from the selected contour only
+    yolk_mask = np.zeros(mask.shape, dtype=np.uint8)
     cv2.drawContours(yolk_mask, [yolk_contour], -1, 255, -1)
 
     # Erode to get the inner region (avoid edge contamination from egg white)
