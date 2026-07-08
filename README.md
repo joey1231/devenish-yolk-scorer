@@ -55,6 +55,60 @@ python batch_score.py test_images/
 python yolk_scorer.py test_images/synthetic_yolk_score_7.jpg --debug
 ```
 
+## Testing with included images
+
+The repo ships with both synthetic and real egg photos in `test_images/`.
+
+### Synthetic test images (known ground truth)
+
+```bash
+# Score a mid-range yellow yolk (expected: ~7-8)
+python yolk_scorer.py test_images/synthetic_yolk_score_7.jpg
+
+# Score a pale yolk (expected: ~1-2)
+python yolk_scorer.py test_images/synthetic_yolk_score_1.jpg
+
+# Score a deep orange yolk (expected: ~13-15)
+python yolk_scorer.py test_images/synthetic_yolk_score_13.jpg
+```
+
+### Real egg photos
+
+```bash
+# Single yolk on blue surface -- tests scoring without a white plate
+python yolk_scorer.py test_images/real_egg_yolk_1.jpg --debug
+
+# Two eggs cracked into a white bowl -- tests white-balance + multi-yolk
+python yolk_scorer.py test_images/real_egg_yolk_2.jpg --debug
+
+# Multiple yolks in eggshell halves -- tests circularity filter
+python yolk_scorer.py test_images/real_egg_yolk_3.jpg --debug
+```
+
+### Test with your own photo
+
+```bash
+# Take a photo of a cracked egg on a white plate, then:
+python yolk_scorer.py path/to/your_egg.jpg --debug
+```
+
+The `--debug` flag saves intermediate images to `test_images/debug_output/`:
+- `01_original.jpg` -- Input image
+- `02_white_balanced.jpg` -- After white-balance correction
+- `03_yolk_segmentation.jpg` -- Yolk mask overlay (green = detected yolk)
+- `03b_yolk_mask.jpg` -- Binary yolk mask
+- `04_result_summary.jpg` -- Annotated result with color swatches
+
+### Batch scoring + CSV export
+
+```bash
+# Score all images and print a table
+python batch_score.py test_images/
+
+# Same, but also save results to CSV
+python batch_score.py test_images/ --csv results.csv
+```
+
 ## Project structure
 
 ```
@@ -65,7 +119,12 @@ devenish-yolk-scorer/
 ├── batch_score.py           # Batch scoring + CSV export
 ├── requirements.txt         # Python dependencies
 ├── README.md                # This file
-└── test_images/             # Generated/real test images
+├── PART2_ANSWERS.md         # Part 2 written answers
+├── results.csv              # Batch scoring results
+└── test_images/             # Synthetic + real test images
+    ├── synthetic_yolk_score_*.jpg
+    ├── real_egg_yolk_*.jpg
+    └── debug_output/        # Debug visualizations
 ```
 
 ## Technical decisions
